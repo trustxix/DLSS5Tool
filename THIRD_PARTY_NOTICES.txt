@@ -1,0 +1,91 @@
+THIRD-PARTY COMPONENTS
+======================
+
+DLSS 5 Tool is an installer. It writes other people's work into your game
+folder. This file says whose, under which terms, and what the tool does and
+does not redistribute. Versions and SHA-256 pins live in
+src/DLSS5Tool/components.json; "DLSS5Tool --components" prints them.
+
+
+EMBEDDED IN THE PUBLISHED EXECUTABLE (freely redistributable)
+-------------------------------------------------------------
+
+ReShade (full add-on support build) 6.8.0
+    ReShade32.dll, ReShade64.dll, Vulkan layer manifests
+    License: BSD-3-Clause
+    Source:  https://reshade.me (crosire)
+
+DLSS5-Feeder 1.17.0
+    dlss5-feed.addon32/64, dlss5-feed-host64.exe, DLSS5_Feed.fx, Vulkan
+    fallback layers, Verify-DLSS5Feeder.ps1
+    License: MIT
+    Source:  https://github.com/jlrouzies-fr/DLSS5-Feeder
+
+reshade-shaders framework headers (slim branch, commit fd00221)
+    ReShade.fxh, ReShadeUI.fxh, DrawText.fxh
+    License: BSD-3-Clause
+    Source:  https://github.com/crosire/reshade-shaders
+
+dgVoodoo2 2.87.5
+    D3D8.dll, D3D9.dll, DDraw.dll, D3DImm.dll, Glide wrappers, dgVoodoo.conf,
+    dgVoodooCpl.exe
+    License: Freeware; the author states the DLLs may be shipped with
+             applications
+    Source:  https://github.com/dege-diosg/dgVoodoo2 (Dege)
+
+
+FETCHED AT INSTALL TIME FROM THEIR OFFICIAL SOURCES (not embedded, not mirrored)
+--------------------------------------------------------------------------------
+
+Each download is checked against a pinned SHA-256 before it is used, then
+cached under %LOCALAPPDATA%\DLSS5Tool\cache.
+
+LumeniteFX (motion-vector provider shaders and blue-noise texture), commit f80e98d
+    The AGNYA License permits use but forbids hosting copies anywhere other
+    than the author's official links; the tool therefore downloads it from the
+    author's GitHub and ships its LICENSE.md and NOTICE next to the shaders.
+    Source: https://github.com/umar-afzaal/LumeniteFX (Afzaal)
+
+RenoDX DLSS 5 Neural Rendering add-on, renodx-dlss5.addon64 (Krish), 8.5.0-rc10
+    Distributed through the RenoDX community; no stated license.
+    Source: https://github.com/RankFTW/rhi-repo/releases
+
+NVIDIA DLSS Super Resolution runtime, nvngx_dlss.dll 310.9.1
+    NVIDIA's DLSS SDK license allows distribution only as part of an
+    application, not stand-alone.
+    Source: https://github.com/RankFTW/rhi-repo/releases
+
+NVIDIA DLSS Neural Rendering runtime, nvngx_dlssnr.dll 310.8.0 (signed reference build)
+    THIS FILE HAS NOT BEEN RELEASED BY NVIDIA. It surfaced in an early-access
+    build of a third-party game in August 2026. NVIDIA holds all rights to it;
+    nothing grants redistribution. The tool downloads it from the public mirror
+    the community uses, checks it against the pinned hash of the signed file,
+    and leaves the decision to install it with you.
+    Source: https://github.com/RankFTW/rhi-repo/releases
+
+DLSS Neural Rendering runtime, community build for RTX 20/30/40, 310.8.SF-v2
+    A modified copy of the file above (adds Ada binaries and an FP16 path for
+    Turing/Ampere). Same status, plus it is no longer NVIDIA-signed. Used only
+    when the detected GPU is not RTX 50.
+    Source: https://github.com/RankFTW/rhi-repo/releases
+
+If you would rather supply these yourself, put them under
+%LOCALAPPDATA%\DLSS5Tool\local\<component id>\<file> (for example
+local\nvngx-dlssnr\nvngx_dlssnr.dll); the tool prefers those over any download.
+
+
+NOT INCLUDED
+------------
+
+* Deep Fried Chicken (another neural consumer) has no public download; the
+  tool neither ships nor fetches it.
+* OptiScaler DLSS-NR forks: a different route; the tool detects and disables
+  OptiScaler proxies because they conflict with the add-on route.
+
+
+ATTRIBUTION
+-----------
+
+The install sequence follows the documentation of DLSS5-Feeder (jlrouzies-fr)
+and the RenoDX project (clshortfuse and contributors, MIT). ReShade's Vulkan
+layer registration mirrors ReShade's own setup.

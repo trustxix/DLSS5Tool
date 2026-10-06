@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>DLSS5Tool</AssemblyName>
+    <RootNamespace>DLSS5Tool</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="Exists('$(MSBuildProjectDirectory)\app.ico')">app.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Platforms>AnyCPU;x64</Platforms>
+    <DebugType>embedded</DebugType>
+    <AssemblyTitle>DLSS 5 Tool</AssemblyTitle>
+    <Description>Installs DLSS 5 neural rendering into any game: detects the game, picks the route, deploys every file.</Description>
+    <InformationalVersion>$(Version)</InformationalVersion>
+  </PropertyGroup>
+
+  <!-- Release artefact: one self-contained exe. tools/Build-Release.ps1 passes -p:Publishing=true. -->
+  <PropertyGroup Condition="'$(Publishing)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="components.json" LogicalName="components.json" />
+    <EmbeddedResource Include="payload.zip" LogicalName="payload.zip" Condition="Exists('$(MSBuildProjectDirectory)\payload.zip')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DLSS5Tool.Tests" />
+  </ItemGroup>
+
+</Project>

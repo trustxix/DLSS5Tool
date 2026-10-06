@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build release executable
+        shell: pwsh
+        run: ./tools/Build-Release.ps1 -Version ($env:GITHUB_REF_NAME.TrimStart('v'))
+
+      - name: Verify the executable answers
+        shell: pwsh
+        run: |
+          # A WinExe returns to the shell immediately; wait for it explicitly before reading its output files.
+          foreach ($cmd in @('--version', '--components')) {
+            $out = "dist/$($cmd.TrimStart('-')).txt"
+            $p = Start-Process -FilePath (Resolve-Path dist/DLSS5Tool.exe) -ArgumentList $cmd,'--out',$out -Wait -PassThru -NoNewWindow
+            if ($p.ExitCode) { throw "DLSS5Tool $cmd exited with $($p.ExitCode)" }
+            Get-Content $out
+          }
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/DLSS5Tool.exe
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          body: |
+            One file: download `DLSS5Tool.exe`, run it, pick a game, press **Install DLSS 5**.
+            The tool updates itself from this page. Verify the download with `SHA256SUMS.txt`.

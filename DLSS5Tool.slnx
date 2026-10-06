@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DLSS5Tool.Tests/DLSS5Tool.Tests.csproj" />
+    <Project Path="src/DLSS5Tool/DLSS5Tool.csproj" />
+  </Folder>
+</Solution>

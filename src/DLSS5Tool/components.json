@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "notes": "Single source of truth for every third-party piece. tools/Build-Payload.ps1 bundles the 'bundled' components into payload.zip; the tool fetches 'on-demand' components from these exact URLs at install time and verifies every file against the SHA-256 below.",
+  "components": [
+    {
+      "id": "reshade",
+      "name": "ReShade (full add-on support build)",
+      "version": "6.8.0",
+      "license": "BSD-3-Clause",
+      "homepage": "https://reshade.me",
+      "distribution": "bundled",
+      "source": {
+        "url": "https://reshade.me/downloads/ReShade_Setup_6.8.0_Addon.exe",
+        "sha256": "afe4c8f13048306307983b8b3d41d5bf00a86820440b0e57dea10950e1176445",
+        "format": "reshade-setup"
+      },
+      "files": [
+        { "path": "ReShade32.dll", "sha256": "da430e0a9c6eecefa0d1b27d05e16c426fb5d04e808b194d914eaac4b31bc0f8" },
+        { "path": "ReShade64.dll", "sha256": "0cee63f9c9f13f3ac909c5b4903f4dbb4b719a7ab3b4f13b0deaf83c814b94f7" },
+        { "path": "ReShade32.json", "sha256": "dbfdbadb8c64b398b2f8bf30469841ab8c35e10c9da40ba69b966559d5fa15f6" },
+        { "path": "ReShade64.json", "sha256": "aa21713718843e531da396e2bfc80772c9cb3c369d6c30b836be6b0ae812d503" }
+      ]
+    },
+    {
+      "id": "dlss5-feeder",
+      "name": "DLSS5-Feeder",
+      "version": "1.17.0",
+      "license": "MIT",
+      "homepage": "https://github.com/jlrouzies-fr/DLSS5-Feeder",
+      "distribution": "bundled",
+      "source": {
+        "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/download/v1.17.0/DLSS5-Feeder-1.17.0.zip",
+        "sha256": "11a96b36ae89ef75b3cff0e03849db35591143fe4df171986502905809469e12",
+        "format": "zip"
+      },
+      "files": [
+        { "path": "dlss5-feed.addon32", "sha256": "bfe24218be719cf5b91d829283953432907922333280931b755d83ac793fd8b2" },
+        { "path": "dlss5-feed.addon64", "sha256": "6854d012eac307021cd31c978bafd42f1e22c5b7b2922c80e0a0010d428a3fd7" },
+        { "path": "host64/dlss5-feed-host64.exe", "sha256": "c835754277a0590780d846443f314a83a30e2d2815ee0b2f7c18f1a24f252936" },
+        { "path": "layer-x64/VkLayer_feed_vk.dll", "sha256": "ed5978fff1ac1b2c85aed7b1ffe2c7668e2be71f5a8cff86b4327bfa1d959a28" },
+        { "path": "layer-x64/VkLayer_feed_vk.json", "sha256": "c15967b3f8847a145e21058a1e57e92c595ee17fc5dd23ab3278b0148ad6e9d1" },
+        { "path": "layer-x64/run-with-feed-layer.bat", "sha256": "bc9aa7964742e23653556be978f540f503f3cef928b6de7a38f77c570bb764f9" },
+        { "path": "layer-x86/VkLayer_feed_vk32.dll", "sha256": "cbb3039e13ce1a851c00bba24a93586ea8d9731dad3fcf426f412cc764a61860" },
+        { "path": "layer-x86/VkLayer_feed_vk32.json", "sha256": "28f8174eb8fed02266bafa6910eab07922ec6d2bdb33110699c586f74b254921" },
+        { "path": "layer-x86/run-with-feed-layer32.bat", "sha256": "75d4584ad01619402a10e0d8342b114613057a1d3b0ac8dbe9280b740090c3e8" },
+        { "path": "reshade-shaders/Shaders/DLSS5_Feed.fx", "sha256": "c4ba1610df8e1593faa7c203d6d0517058d3a8ecf2dfda18ca67849844391456" },
+        { "path": "Verify-DLSS5Feeder.ps1", "sha256": "2cdb0eac0f4f8ea9da8e6290c442f846074aae9b87750425e0d2da4a820d0aca" },
+        { "path": "READ-ME-FIRST.txt", "sha256": "73b7f248bb8b6237dd778472714689811678841ab64359e06dce5cd0c9dfd629" }
+      ]
+    },
+    {
+      "id": "reshade-shaders",
+      "name": "ReShade framework headers (reshade-shaders, slim branch)",
+      "version": "fd0022170615ce0d8162d219bff07232fa6dd84f",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/crosire/reshade-shaders",
+      "distribution": "bundled",
+      "files": [
+        { "path": "ReShade.fxh", "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh", "sha256": "6dabfbbaf968c3871905d2ea17f96572ff7b1cec01310b5d0e5252b66b30174f" },
+        { "path": "ReShadeUI.fxh", "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShadeUI.fxh", "sha256": "78adf672df47460297eb9fe6dd238d2aafa24510b52b84feb1a745dff70eb901" },
+        { "path": "DrawText.fxh", "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/DrawText.fxh", "sha256": "b79cc4dfb3e98bcf4c06193d00ea7631d74f467f73a4deeeee13e71336d3e680" }
+      ]
+    },
+    {
+      "id": "dgvoodoo2",
+      "name": "dgVoodoo2",
+      "version": "2.87.5",
+      "license": "Freeware (author permits shipping with applications)",
+      "homepage": "https://github.com/dege-diosg/dgVoodoo2",
+      "distribution": "bundled",
+      "source": {
+        "url": "https://github.com/dege-diosg/dgVoodoo2/releases/download/v2.87.5/dgVoodoo2_87_5.zip",
+        "sha256": "5ffde6927f7355ca3fdd5d785b581256a8e6539fa13e395a891ade6ba1040850",
+        "format": "zip"
+      },
+      "files": [
+        { "path": "MS/x86/D3D8.dll", "sha256": "d03e2562178db1fcf3493fc0a0b23a465e35c55d73adb3ec095be866cd662704" },
+        { "path": "MS/x86/D3D9.dll", "sha256": "6a0ca214784be04b7c8b547105aa9d79acf4dc26c0b6f8702b437ddca54058b2" },
+        { "path": "MS/x86/D3DImm.dll", "sha256": "93c534f2d17419ea78f15551f7e0aac78b3c503733a840914fa063708a5afe8e" },
+        { "path": "MS/x86/DDraw.dll", "sha256": "612a24408a090a3c6f3886557fa18034ee742e94ad0a40ebdf854d2816176c2e" },
+        { "path": "MS/x64/D3D9.dll", "sha256": "0b3485614a56fff27cf66c1cee670979defe4103342884203e9726f455a5b091" },
+        { "path": "3Dfx/x86/Glide.dll", "sha256": "028dcaef62ccb9a051df986096031c4d63bdd4c19d997b14ed3389b1b09a368e" },
+        { "path": "3Dfx/x86/Glide2x.dll", "sha256": "dd61cf60e2cab0ed0d5dd4e26b88a3008592adc9ebe072d90dc086d67f7dfad2" },
+        { "path": "3Dfx/x86/Glide3x.dll", "sha256": "d704f1885f17d015750d9f8b125df83fef0d14bae0d18d0ba0209c904ac9cde2" },
+        { "path": "dgVoodoo.conf", "sha256": "45cc0eb8e6ed4f067aca1b2e4ac1268dfbd164bbbd06d264c53e8a60642c4dbf" },
+        { "path": "dgVoodooCpl.exe", "sha256": "87fb878166dcaef3e75ff170de030527c73f5c9b164c5943da13f8a97b0b75c6" }
+      ]
+    },
+    {
+      "id": "lumenitefx",
+      "name": "LumeniteFX (motion-vector provider)",
+      "version": "f80e98d716ad72e12af6f7baa727bcfeb4be5094",
+      "license": "AGNYA License (no mirroring; fetched from the author's official GitHub at install time)",
+      "homepage": "https://github.com/umar-afzaal/LumeniteFX",
+      "distribution": "on-demand",
+      "source": {
+        "url": "https://github.com/umar-afzaal/LumeniteFX/archive/f80e98d716ad72e12af6f7baa727bcfeb4be5094.zip",
+        "sha256": "982a18507df0249118950ba68af52bb43d8cbd85458a4704f96e49de0b4d0e74",
+        "format": "zip",
+        "stripPrefix": "LumeniteFX-f80e98d716ad72e12af6f7baa727bcfeb4be5094/"
+      },
+      "files": [
+        { "path": "LICENSE.md", "sha256": "e7db77f66f2d17b832823a93ef9350c4e475c5887e13638b5dd1160ff0ba2f28" },
+        { "path": "NOTICE", "sha256": "dabc90a3c5c463cefe33b0252f0d8d383b88e9669532412ae13568dcbdeab0bb" },
+        { "path": "Shaders/include/lumenite_ColorManagement.fxh", "sha256": "116d3c41cd48f7787a2ed87eefc65fb2d9083fc1ab609766a3fbcca3e62649a6" },
+        { "path": "Shaders/include/lumenite_Compute.fxh", "sha256": "736e3f39fc0c48a405c4d10b0d158502009db940e2673ff778e6b919d3c1a55f" },
+        { "path": "Shaders/include/lumenite_Helpers.fxh", "sha256": "8826d613944be27e14095982b20098fff6d45e91c7d4028473c2f5b784c80028" },
+        { "path": "Shaders/include/lumenite_Projections.fxh", "sha256": "709ec414649b74e573ca0f12a5ef25998d332238f7cab14a3d91053c8d388cab" },
+        { "path": "Shaders/lumenite_AnamorphicBloom.fx", "sha256": "cbb145eadd884c8d2c903e51f85103eb2317677612fa7cfe6f2f6a9929aae3ee" },
+        { "path": "Shaders/lumenite_Kernel.fx", "sha256": "869821002c97ead3424740d747af1972f9869adeb75288166f5ffdfa56b6c8ce" },
+        { "path": "Shaders/lumenite_LSAO.fx", "sha256": "20d605f4d694f4c5e5a8f0399fd9a25d02843e06fbb7a8bfe759ed050d6e13bf" },
+        { "path": "Shaders/lumenite_QuantAO.fx", "sha256": "8deb70e440e1cd94a34c48f14554a23631ce5cad713b0fefef5b544974ca47c1" },
+        { "path": "Shaders/lumenite_QuantMotion.fx", "sha256": "4a27b2f3676cd836e460be3bb7a094cbf7ddd74e29b19d88ff7381066fcb94d8" },
+        { "path": "Shaders/lumenite_RTAO.fx", "sha256": "c01d061fa4a03b15b60ecf78162c66efc50cef00e76de65c38363525d85df1ba" },
+        { "path": "Shaders/lumenite_SSSR.fx", "sha256": "18e6592c8a3b86c2f3e4b80d3e3ea12bd6e4e9b3b75c49e00708097a1a9ead4d" },
+        { "path": "Shaders/lumenite_TRAA.fx", "sha256": "2d9261686a83131af838692bf7273d24a85ead8d9047f943d1227757608ecd4e" },
+        { "path": "Textures/lumenite_bluenoise256.png", "sha256": "2ad9e5b0bd28ddff569dbd756a551fe8e681b67eb72a83bb027434e1be24122b" }
+      ]
+    },
+    {
+      "id": "renodx-dlss5",
+      "name": "RenoDX DLSS 5 Neural Rendering add-on (Krish)",
+      "version": "8.5.0-rc10",
+      "license": "Unstated; redistributed by the RHI repository",
+      "homepage": "https://github.com/RankFTW/rhi-repo/releases/tag/renodx-dlss5-8.5.0-rc10",
+      "distribution": "on-demand",
+      "source": {
+        "url": "https://github.com/RankFTW/rhi-repo/releases/download/renodx-dlss5-8.5.0-rc10/renodx-dlss5_8.5.0-rc10.zip",
+        "sha256": "a745040cb2e93e3a1500a6c5a322972acc4c5c667108fcea31c748285d6364a9",
+        "format": "zip"
+      },
+      "files": [
+        { "path": "renodx-dlss5.addon64", "sha256": "dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68" }
+      ]
+    },
+    {
+      "id": "nvngx-dlssnr",
+      "name": "NVIDIA DLSS Neural Rendering runtime (signed reference build)",
+      "version": "310.8.0",
+      "license": "NVIDIA proprietary; not licensed for standalone redistribution",
+      "homepage": "https://github.com/RankFTW/rhi-repo/releases/tag/dlssnr-310.8.0",
+      "distribution": "on-demand",
+      "gpuTiers": [ "rtx50" ],
+      "source": {
+        "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.0/nvngx_dlssnr_310.8.0.zip",
+        "sha256": "388c0a7912e15ec911b9c9e11a692142b11fe387ddf2b637d8c358138fffb3ac",
+        "format": "zip"
+      },
+      "files": [
+        { "path": "nvngx_dlssnr.dll", "sha256": "e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e" }
+      ]
+    },
+    {
+      "id": "nvngx-dlssnr-sf",
+      "name": "DLSS Neural Rendering runtime, community build for RTX 20/30/40 (310.8.SF-v2)",
+      "version": "310.8.SF-v2",
+      "license": "Modified NVIDIA binary; community build",
+      "homepage": "https://github.com/RankFTW/rhi-repo/releases/tag/dlssnr-310.8.SF-v2",
+      "distribution": "on-demand",
+      "gpuTiers": [ "rtx20", "rtx30", "rtx40" ],
+      "source": {
+        "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.SF-v2/nvngx_dlssnr_310.8.SF-v2.zip",
+        "sha256": "1da35941894994eb087e017577829e492454e9bae3a6a9397027069ceb74955c",
+        "format": "zip"
+      },
+      "files": [
+        { "path": "nvngx_dlssnr.dll", "sha256": "6eb209e764f39872625debd6abaf45e2bb6322f6f270f781f70c059ae30b3927" }
+      ]
+    },
+    {
+      "id": "nvngx-dlss",
+      "name": "NVIDIA DLSS Super Resolution runtime",
+      "version": "310.9.1",
+      "license": "NVIDIA DLSS SDK license",
+      "homepage": "https://github.com/RankFTW/rhi-repo/releases/tag/dlss-310.9.1",
+      "distribution": "on-demand",
+      "source": {
+        "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlss-310.9.1/nvngx_dlss_310.9.1.zip",
+        "sha256": "aaba83b288bd145c3808e8d7a0ba03cc8c8676d18ad984b1bfa6563046a3ba37",
+        "format": "zip"
+      },
+      "files": [
+        { "path": "nvngx_dlss.dll", "sha256": "3975567b8943c53acce397f2b72380092f84f162d00b0d2c7d08a1025c563983" }
+      ]
+    }
+  ]
+}

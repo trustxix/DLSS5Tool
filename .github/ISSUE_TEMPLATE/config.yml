@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: DLSS5-Feeder (the add-on this tool installs for games without DLSS)
+    url: https://github.com/jlrouzies-fr/DLSS5-Feeder/issues
+    about: Problems inside the game after a verified install usually belong upstream.
+  - name: RenoDX Discord (DLSS 5 add-on and neural model builds)
+    url: https://discord.com/invite/renodx
+    about: Newer add-on builds and GPU-specific model builds are published there first.

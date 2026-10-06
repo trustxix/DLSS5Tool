@@ -1,0 +1,36 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.user
+*.suo
+.vs/
+
+# .NET build output
+bin/
+obj/
+dist/
+out/
+TestResults/
+*.binlog
+
+# Assembled payload and download caches (rebuilt by tools/Build-Payload.ps1)
+src/DLSS5Tool/payload.zip
+tools/.cache/
+tools/.stage/
+
+# Logs & temp
+*.log
+*.tmp
+.env
+.env.local
+
+# Local backups
+backups/

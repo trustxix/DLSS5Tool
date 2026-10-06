@@ -1,0 +1,30 @@
+CHANGELOG
+=========
+
+0.1.0 - 2026-10-06
+------------------
+
+First release.
+
+* One-window installer: scans Steam, Epic, GOG, Ubisoft Connect, EA,
+  Battle.net, Xbox, Rockstar and Amazon Games libraries, or takes any .exe.
+* Per-game analysis from the executable itself: bitness, graphics API
+  (import table, delay-load table, engine DLLs, string hints), native DLSS /
+  Streamline, DXVK, RTX Remix, existing ReShade, dgVoodoo and conflicting
+  proxies.
+* Three automatic routes: native DLSS + RenoDX DLSS 5 add-on (64-bit
+  D3D11/D3D12 games with DLSS), DLSS5-Feeder 64-bit (D3D11, D3D12, OpenGL,
+  Vulkan, D3D9 via dgVoodoo2), DLSS5-Feeder 32-bit with the host64 helper
+  (D3D10/11, OpenGL, Vulkan/DXVK, D3D8/D3D9/DirectDraw/Glide via dgVoodoo2).
+* Journaled installs: every written file is recorded, every replaced file is
+  backed up; Uninstall restores the folder exactly.
+* GPU-aware neural model selection (NVIDIA reference build on RTX 50,
+  community build on RTX 20/30/40) with SHA-256-verified downloads and a
+  local cache.
+* ReShade Vulkan layer registration through one elevated step, mirroring
+  ReShade's own setup.
+* Verify (static checks plus a read of dlss5-feed.log / ReShade.log) and
+  Self-test (DLSS5-Feeder's helper --test, 300 evaluates with no game).
+* Headless CLI (--scan, --analyze, --plan, --install, --uninstall, --verify,
+  --selftest, --components, --update).
+* Self-update from GitHub Releases with checksum verification.

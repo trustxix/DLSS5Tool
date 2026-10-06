@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore: ['**.txt', 'LICENSE']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Assemble payload (bundled components only)
+        shell: pwsh
+        run: ./tools/Build-Payload.ps1
+
+      - name: Test
+        run: dotnet test src/DLSS5Tool.Tests/DLSS5Tool.Tests.csproj -c Release --nologo
+
+      - name: Publish single-file executable
+        shell: pwsh
+        run: |
+          dotnet publish src/DLSS5Tool/DLSS5Tool.csproj -c Release -r win-x64 --self-contained true -p:Publishing=true -p:DebugType=none -o dist --nologo
+          if ($LASTEXITCODE) { throw "publish failed" }
+          Get-ChildItem dist -Exclude DLSS5Tool.exe | Remove-Item -Force -Recurse
+          # A WinExe returns to the shell immediately; wait for it explicitly before reading its output file.
+          $p = Start-Process -FilePath (Resolve-Path dist/DLSS5Tool.exe) -ArgumentList '--version','--out','dist/version.txt' -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode) { throw "DLSS5Tool --version exited with $($p.ExitCode)" }
+          Get-Content dist/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DLSS5Tool-ci
+          path: dist/DLSS5Tool.exe
+          retention-days: 14
