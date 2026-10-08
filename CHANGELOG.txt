@@ -13,18 +13,6 @@ Unreleased
   closing during an operation asks first; the layout scales with display DPI;
   tool tips on every action; "Add game" re-selects an already listed game.
 
-Unreleased
-----------
-
-* Command line: unknown options and conflicting commands are rejected with
-  a usage error; --out creates its folder and also captures usage errors;
-  --install --json prints one machine-readable result; --verify applies the
-  same GPU check as the window.
-* Window: unhandled errors are logged and shown instead of closing the app;
-  the chosen executable and graphics API survive install and uninstall;
-  closing during an operation asks first; the layout scales with display DPI;
-  tool tips on every action; "Add game" re-selects an already listed game.
-
 0.1.0 - 2026-10-06
 ------------------
 
