@@ -123,26 +123,35 @@ public sealed class Installer
 
     public Task UninstallAsync(string gameDir, InstallJournal journal, IProgress<string>? progress = null, CancellationToken ct = default)
     {
+        gameDir = Path.GetFullPath(gameDir);
+        var gameRoot = gameDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var backupDir = Path.Combine(gameDir, journal.BackupDir);
         var problems = new List<string>();
         foreach (var e in Enumerable.Reverse(journal.Entries))
         {
             ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(e.Path)) { problems.Add("journal entry without a path; skipped"); continue; }
             var full = Path.GetFullPath(Path.Combine(gameDir, e.Path));
+            var insideGame = full.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase);
             try
             {
                 switch (e.Action)
                 {
                     case "created":
-                        if (File.Exists(full)) File.Delete(full);
+                        // Only ever delete inside the game folder, whatever a damaged journal says.
+                        if (!insideGame) { problems.Add($"{e.Path} is outside the game folder; not deleted"); break; }
+                        if (File.Exists(full)) { ClearReadOnly(full); File.Delete(full); }
                         break;
                     case "replaced":
                     case "merged":
-                        if (e.Backup != null && File.Exists(Path.Combine(backupDir, e.Backup)))
+                        var backup = e.Backup != null ? Path.Combine(backupDir, e.Backup) : null;
+                        if (backup != null && File.Exists(backup))
                         {
                             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-                            File.Copy(Path.Combine(backupDir, e.Backup), full, true);
-                            File.Delete(Path.Combine(backupDir, e.Backup));
+                            if (File.Exists(full)) ClearReadOnly(full);
+                            File.Copy(backup, full, true);
+                            ClearReadOnly(backup);
+                            File.Delete(backup);
                         }
                         else
                         {
@@ -150,8 +159,13 @@ public sealed class Installer
                         }
                         break;
                     case "disabled":
-                        var disabled = e.Note != null ? Path.Combine(gameDir, e.Note) : full + Context.DisabledSuffix;
+                        var disabled = e.Note != null ? Path.GetFullPath(Path.Combine(gameDir, e.Note)) : full + Context.DisabledSuffix;
+                        if (!insideGame || !disabled.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase)) { problems.Add($"{e.Path} is outside the game folder; not restored"); break; }
                         if (File.Exists(disabled) && !File.Exists(full)) File.Move(disabled, full);
+                        else if (File.Exists(disabled)) problems.Add($"{e.Path} was recreated by something else; the original is still at {Path.GetFileName(disabled)}");
+                        break;
+                    default:
+                        problems.Add($"{e.Path}: unknown journal action '{e.Action}'; skipped");
                         break;
                 }
             }
@@ -193,6 +207,17 @@ public sealed class Installer
         foreach (var pr in problems) Log.Warn("Uninstall: " + pr);
         Report(progress, problems.Count == 0 ? "Uninstalled; the game folder is back to its previous state." : $"Uninstalled with {problems.Count} note(s): {string.Join("; ", problems)}");
         return Task.CompletedTask;
+    }
+
+    /// <summary>Games and launchers sometimes mark files read-only; a replace or delete must not trip over that.</summary>
+    internal static void ClearReadOnly(string path)
+    {
+        try
+        {
+            var attrs = File.GetAttributes(path);
+            if ((attrs & FileAttributes.ReadOnly) != 0) File.SetAttributes(path, attrs & ~FileAttributes.ReadOnly);
+        }
+        catch { /* the following operation reports the real error */ }
     }
 
     private static void DeleteIfEmpty(string dir)
@@ -380,16 +405,28 @@ public sealed class Installer
             }
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             string? backupRel = null;
+            string? backupPath = null;
             if (existed)
             {
                 backupRel = Rel(target);
-                var bp = Path.Combine(_backupDir, backupRel);
-                Directory.CreateDirectory(Path.GetDirectoryName(bp)!);
-                File.Copy(target, bp, true);
+                backupPath = Path.Combine(_backupDir, backupRel);
+                Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+                File.Copy(target, backupPath, true);
             }
             var tmp = target + ".dlss5tool-tmp";
-            write(tmp);
-            File.Move(tmp, target, true);
+            try
+            {
+                write(tmp);
+                if (existed) ClearReadOnly(target);
+                File.Move(tmp, target, true);
+            }
+            catch
+            {
+                // The original is untouched: drop the half-written temp file and the now pointless backup copy.
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best effort */ }
+                try { if (backupPath != null && File.Exists(backupPath)) File.Delete(backupPath); } catch { /* best effort */ }
+                throw;
+            }
             _journal.Entries.Add(new JournalEntry
             {
                 Path = Rel(target),

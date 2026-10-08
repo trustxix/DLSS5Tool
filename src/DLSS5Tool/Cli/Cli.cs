@@ -364,7 +364,7 @@ public static class Cli
         var info = Updater.CheckAsync().GetAwaiter().GetResult();
         if (info == null)
         {
-            o.Line("Up to date.");
+            o.Line("No newer release found.");
             return 0;
         }
         o.Line($"Update available: {info.Tag}  {info.HtmlUrl}");

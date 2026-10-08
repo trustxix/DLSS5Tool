@@ -27,8 +27,10 @@ public sealed class PeFile
         {
             return Read(path, readExports);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or EndOfStreamException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+                                   or IndexOutOfRangeException or ArithmeticException or InvalidDataException or BadImageFormatException or NotSupportedException)
         {
+            // A damaged or exotic executable in a game folder must never take the analysis down with it.
             return null;
         }
     }

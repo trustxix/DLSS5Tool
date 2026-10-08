@@ -12,6 +12,14 @@ Unreleased
   the chosen executable and graphics API survive install and uninstall;
   closing during an operation asks first; the layout scales with display DPI;
   tool tips on every action; "Add game" re-selects an already listed game.
+* Installer: read-only files are replaced and restored correctly; a failed
+  write leaves no temp file or stray backup behind; uninstall refuses to
+  delete anything outside the game folder even from a damaged journal.
+* Downloads: partial or truncated downloads and failed extractions are
+  cleaned up and reported with the HTTP status; the update download is
+  verified for length and status before its checksum.
+* Analysis: a damaged executable or DLL in a game folder no longer aborts
+  the scan of that game.
 
 0.1.0 - 2026-10-06
 ------------------

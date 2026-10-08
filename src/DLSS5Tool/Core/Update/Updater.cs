@@ -70,31 +70,44 @@ public static class Updater
         Directory.CreateDirectory(dir);
         var dest = Path.Combine(dir, AssetName + ".new");
         progress?.Report($"Downloading DLSS 5 Tool {update.Tag}...");
-        await using (var net = await Http.GetStreamAsync(update.ExeUrl, ct).ConfigureAwait(false))
-        await using (var fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+        try
         {
-            await net.CopyToAsync(fs, ct).ConfigureAwait(false);
-        }
-        if (update.SumsUrl != null)
-        {
-            var sums = await Http.GetStringAsync(update.SumsUrl, ct).ConfigureAwait(false);
-            var expected = sums.Split('\n').Select(l => l.Trim()).Where(l => l.EndsWith(AssetName, StringComparison.OrdinalIgnoreCase)).Select(l => l.Split(' ', '\t')[0]).FirstOrDefault();
-            if (expected == null) throw new InvalidDataException("SHA256SUMS.txt does not list " + AssetName + ".");
-            var actual = Hashing.Sha256File(dest);
-            if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+            using (var resp = await Http.GetAsync(update.ExeUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
             {
-                File.Delete(dest);
-                throw new InvalidDataException($"The downloaded update does not match the published SHA-256 (expected {expected}, got {actual}).");
+                if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"Download failed: HTTP {(int)resp.StatusCode} {resp.ReasonPhrase} for {update.ExeUrl}", null, resp.StatusCode);
+                await using var net = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                await using var fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16);
+                await net.CopyToAsync(fs, ct).ConfigureAwait(false);
+                if (resp.Content.Headers.ContentLength is { } expectedLength && fs.Length != expectedLength)
+                {
+                    throw new IOException($"The update download ended early ({fs.Length} of {expectedLength} bytes).");
+                }
             }
-            progress?.Report("Checksum verified.");
+            if (update.SumsUrl != null)
+            {
+                var sums = await Http.GetStringAsync(update.SumsUrl, ct).ConfigureAwait(false);
+                var expected = sums.Split('\n').Select(l => l.Trim()).Where(l => l.EndsWith(AssetName, StringComparison.OrdinalIgnoreCase)).Select(l => l.Split(' ', '\t')[0].TrimStart('*')).FirstOrDefault();
+                if (expected == null) throw new InvalidDataException("SHA256SUMS.txt does not list " + AssetName + ".");
+                var actual = Hashing.Sha256File(dest);
+                if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException($"The downloaded update does not match the published SHA-256 (expected {expected}, got {actual}).");
+                }
+                progress?.Report("Checksum verified.");
+            }
+            else
+            {
+                progress?.Report("No SHA256SUMS.txt on this release; the download could not be checksum-verified.");
+            }
+            var pe = PeFile.TryRead(dest);
+            if (pe == null || !pe.Is64Bit) throw new InvalidDataException("The downloaded update is not a 64-bit Windows executable.");
+            return dest;
         }
-        else
+        catch
         {
-            progress?.Report("No SHA256SUMS.txt on this release; the download could not be checksum-verified.");
+            try { if (File.Exists(dest)) File.Delete(dest); } catch { /* best effort */ }
+            throw;
         }
-        var pe = PeFile.TryRead(dest);
-        if (pe == null || !pe.Is64Bit) throw new InvalidDataException("The downloaded update is not a 64-bit Windows executable.");
-        return dest;
     }
 
     /// <summary>Swaps the running executable for the downloaded one and restarts. Does not return on success.</summary>

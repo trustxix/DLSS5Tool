@@ -185,19 +185,32 @@ public sealed class ComponentStore
         if (entry == null) return false;
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         var tmp = dest + ".part";
-        using (var es = entry.Open())
-        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+        try
         {
-            es.CopyTo(fs);
+            using (var es = entry.Open())
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+            {
+                es.CopyTo(fs);
+            }
+            if (!Hashing.Matches(tmp, f.Sha256))
+            {
+                System.IO.File.Delete(tmp);
+                Log.Error($"Embedded payload entry {c.Id}/{f.Path} failed its hash check; falling back to download.");
+                return false;
+            }
+            System.IO.File.Move(tmp, dest, true);
+            return true;
         }
-        if (!Hashing.Matches(tmp, f.Sha256))
+        catch
         {
-            System.IO.File.Delete(tmp);
-            Log.Error($"Embedded payload entry {c.Id}/{f.Path} failed its hash check; falling back to download.");
-            return false;
+            DeleteQuietly(tmp);
+            throw;
         }
-        System.IO.File.Move(tmp, dest, true);
-        return true;
+    }
+
+    private static void DeleteQuietly(string path)
+    {
+        try { if (System.IO.File.Exists(path)) System.IO.File.Delete(path); } catch { /* best effort */ }
     }
 
     private async Task<string> DownloadSourceAsync(Component c, IProgress<ComponentProgress>? progress, CancellationToken ct)
@@ -216,34 +229,48 @@ public sealed class ComponentStore
         var tmp = dest + ".part";
         Log.Info($"GET {url}");
         progress?.Report(new ComponentProgress { Message = label });
-        using (var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
+        try
         {
-            resp.EnsureSuccessStatusCode();
-            var total = resp.Content.Headers.ContentLength;
-            await using var net = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            await using var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16);
-            var buffer = new byte[1 << 16];
-            long done = 0;
-            var lastReport = DateTime.UtcNow;
-            int n;
-            while ((n = await net.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+            using (var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
             {
-                await fs.WriteAsync(buffer.AsMemory(0, n), ct).ConfigureAwait(false);
-                done += n;
-                if (progress != null && (DateTime.UtcNow - lastReport).TotalMilliseconds > 200)
+                if (!resp.IsSuccessStatusCode)
                 {
-                    lastReport = DateTime.UtcNow;
-                    progress.Report(new ComponentProgress { Message = $"{label} - {done / 1048576.0:F1} MB" + (total is { } t ? $" of {t / 1048576.0:F1} MB" : string.Empty), Fraction = total is > 0 ? (double)done / total.Value : null });
+                    throw new HttpRequestException($"Download failed: HTTP {(int)resp.StatusCode} {resp.ReasonPhrase} for {url}", null, resp.StatusCode);
+                }
+                var total = resp.Content.Headers.ContentLength;
+                await using var net = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                await using var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16);
+                var buffer = new byte[1 << 16];
+                long done = 0;
+                var lastReport = DateTime.UtcNow;
+                int n;
+                while ((n = await net.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+                {
+                    await fs.WriteAsync(buffer.AsMemory(0, n), ct).ConfigureAwait(false);
+                    done += n;
+                    if (progress != null && (DateTime.UtcNow - lastReport).TotalMilliseconds > 200)
+                    {
+                        lastReport = DateTime.UtcNow;
+                        progress.Report(new ComponentProgress { Message = $"{label} - {done / 1048576.0:F1} MB" + (total is { } t ? $" of {t / 1048576.0:F1} MB" : string.Empty), Fraction = total is > 0 ? (double)done / total.Value : null });
+                    }
+                }
+                if (total is { } expectedLength && done != expectedLength)
+                {
+                    throw new IOException($"Download of {url} ended early ({done} of {expectedLength} bytes).");
                 }
             }
+            var actual = Hashing.Sha256File(tmp);
+            if (!actual.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException($"Download of {url} does not match its pinned SHA-256 (expected {expectedSha256}, got {actual}). Refusing to use it.");
+            }
+            System.IO.File.Move(tmp, dest, true);
         }
-        var actual = Hashing.Sha256File(tmp);
-        if (!actual.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
+        catch
         {
-            System.IO.File.Delete(tmp);
-            throw new InvalidDataException($"Download of {url} does not match its pinned SHA-256 (expected {expectedSha256}, got {actual}). Refusing to use it.");
+            DeleteQuietly(tmp);
+            throw;
         }
-        System.IO.File.Move(tmp, dest, true);
         progress?.Report(new ComponentProgress { Message = label + " - done", Fraction = 1 });
     }
 
@@ -272,21 +299,33 @@ public sealed class ComponentStore
             {
                 throw new InvalidDataException($"{Path.GetFileName(archivePath)} has no entry '{f.Path}' (component {c.Id}).");
             }
-            var dest = Path.Combine(destDir, f.Path);
+            var dest = Path.GetFullPath(Path.Combine(destDir, f.Path));
+            var root = Path.GetFullPath(destDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException($"Component {c.Id} file path '{f.Path}' escapes its cache folder.");
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             var tmp = dest + ".part";
-            using (var es = entry.Open())
-            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+            try
             {
-                es.CopyTo(fs);
+                using (var es = entry.Open())
+                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+                {
+                    es.CopyTo(fs);
+                }
+                var actual = Hashing.Sha256File(tmp);
+                if (!actual.Equals(f.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException($"{f.Path} inside {Path.GetFileName(archivePath)} does not match its pinned SHA-256 (expected {f.Sha256}, got {actual}).");
+                }
+                System.IO.File.Move(tmp, dest, true);
             }
-            var actual = Hashing.Sha256File(tmp);
-            if (!actual.Equals(f.Sha256, StringComparison.OrdinalIgnoreCase))
+            catch
             {
-                System.IO.File.Delete(tmp);
-                throw new InvalidDataException($"{f.Path} inside {Path.GetFileName(archivePath)} does not match its pinned SHA-256 (expected {f.Sha256}, got {actual}).");
+                DeleteQuietly(tmp);
+                throw;
             }
-            System.IO.File.Move(tmp, dest, true);
         }
     }
 
