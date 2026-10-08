@@ -88,6 +88,17 @@ public static class Cli
 
     public static int Run(string[] args)
     {
+        // Open --out first so usage errors land in the file too (a WinExe has no console of its own).
+        string? outFile = null;
+        for (var i = 0; i + 1 < args.Length; i++)
+        {
+            if (args[i].Equals("--out", StringComparison.OrdinalIgnoreCase)) outFile = args[i + 1];
+        }
+        Output o;
+        try { o = new Output(outFile); }
+        catch (Exception ex) { return Fail(null, "Cannot write --out file: " + ex.Message, 3); }
+        using var _ = o;
+
         var opts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string? command = null;
@@ -99,13 +110,13 @@ public static class Cli
             var name = a[2..].ToLowerInvariant();
             if (name is "api" or "out")
             {
-                if (i + 1 >= args.Length) return Fail(null, $"--{name} needs a value.", 3);
+                if (i + 1 >= args.Length) return Fail(o, $"--{name} needs a value.", 3);
                 values[name] = args[++i];
                 continue;
             }
             if (Commands.Contains(name))
             {
-                if (command != null && command != name) return Fail(null, $"Only one command at a time (--{command} and --{name}).", 3);
+                if (command != null && command != name) return Fail(o, $"Only one command at a time (--{command} and --{name}).", 3);
                 command = name;
                 if (name is "analyze" or "plan" or "install" or "uninstall" or "verify")
                 {
@@ -114,15 +125,11 @@ public static class Cli
                 continue;
             }
             if (name is "h" or "?") { command = "help"; continue; }
-            if (!Flags.Contains(name)) return Fail(null, $"Unknown option: {a}\n\n" + Usage, 3);
+            if (!Flags.Contains(name)) return Fail(o, $"Unknown option: {a}\n\n" + Usage, 3);
             opts.Add(name);
         }
-        if (command == null) return Fail(null, "No command given.\n\n" + Usage, 3);
+        if (command == null) return Fail(o, "No command given.\n\n" + Usage, 3);
 
-        Output o;
-        try { o = new Output(values.GetValueOrDefault("out")); }
-        catch (Exception ex) { return Fail(null, "Cannot write --out file: " + ex.Message, 3); }
-        using var _ = o;
         var json = opts.Contains("json");
         try
         {
@@ -253,10 +260,17 @@ public static class Cli
         var gpu = GpuInfo.DetectBest();
         var profile = GameAnalyzer.Analyze(exe);
         var plan = Planner.Build(profile, gpu, store.Catalog, new PlanOptions { ApiOverride = apiOverride, IgnoreGpu = opts.Contains("ignore-gpu"), DgVoodooWatermark = opts.Contains("watermark") });
-        if (json && !install)
+        if (json && (!install || !plan.IsSupported))
         {
             o.Line(JsonSerializer.Serialize(new { route = plan.Route.ToString(), plan.UnsupportedReason, gpu = gpu.ToString(), api = profile.EffectiveApi.ToString(), plan.ReShadeMode, plan.ReShadeDllName, plan.DgVoodooWrapper, plan.HostDir, plan.NrComponentId, items = plan.Items.Select(i => new { kind = i.Kind.ToString(), i.Target, i.ComponentId, i.ComponentPath, i.Description, i.OnlyIfMissing }), plan.Warnings, plan.Notes, plan.PostInstallSteps }, new JsonSerializerOptions { WriteIndented = true }));
             return plan.IsSupported ? 0 : 2;
+        }
+        if (json)
+        {
+            var log = new List<string>();
+            var journalJson = new Installer(store).InstallAsync(plan, new Progress<string>(log.Add)).GetAwaiter().GetResult();
+            o.Line(JsonSerializer.Serialize(new { ok = true, route = plan.Route.ToString(), gpu = gpu.ToString(), api = profile.EffectiveApi.ToString(), files = journalJson.Entries.Count, journal = Path.Combine(profile.GameDir, AppPaths.JournalFileName), postInstallSteps = plan.PostInstallSteps, warnings = plan.Warnings, log }, new JsonSerializerOptions { WriteIndented = true }));
+            return 0;
         }
         PrintProfile(o, profile);
         o.Line($"GPU        : {gpu}");
@@ -283,13 +297,6 @@ public static class Cli
 
         o.Line();
         var installer = new Installer(store);
-        if (json)
-        {
-            var log = new List<string>();
-            var journalJson = installer.InstallAsync(plan, new Progress<string>(log.Add)).GetAwaiter().GetResult();
-            o.Line(JsonSerializer.Serialize(new { ok = true, route = plan.Route.ToString(), gpu = gpu.ToString(), api = profile.EffectiveApi.ToString(), files = journalJson.Entries.Count, journal = Path.Combine(profile.GameDir, AppPaths.JournalFileName), plan.PostInstallSteps, plan.Warnings, log }, new JsonSerializerOptions { WriteIndented = true }));
-            return 0;
-        }
         var progress = new Progress<string>(s => o.Line("  " + s));
         var journal = installer.InstallAsync(plan, progress).GetAwaiter().GetResult();
         o.Line();
