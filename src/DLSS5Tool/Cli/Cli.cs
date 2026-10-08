@@ -22,7 +22,7 @@ public static class Cli
           DLSS5Tool --scan [--json]              List installed games found on this PC.
           DLSS5Tool --analyze <game.exe> [--json]
           DLSS5Tool --plan <game.exe> [--api <api>] [--json]
-          DLSS5Tool --install <game.exe> [--api <api>] [--offline] [--ignore-gpu] [--watermark]
+          DLSS5Tool --install <game.exe> [--api <api>] [--offline] [--ignore-gpu] [--watermark] [--json]
           DLSS5Tool --uninstall <game.exe>
           DLSS5Tool --verify <game.exe> [--json]
           DLSS5Tool --selftest [--show-window]   Run the 64-bit helper self-test (no game needed).
@@ -58,13 +58,16 @@ public static class Cli
             }
             if (outFile != null)
             {
-                _file = new StreamWriter(outFile, false, new UTF8Encoding(false)) { AutoFlush = true };
+                var full = Path.GetFullPath(outFile);
+                var dir = Path.GetDirectoryName(full);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                _file = new StreamWriter(full, false, new UTF8Encoding(false)) { AutoFlush = true };
             }
         }
 
         public void Line(string s = "")
         {
-            _console?.WriteLine(s);
+            try { _console?.WriteLine(s); } catch (IOException) { /* parent console went away */ }
             _file?.WriteLine(s);
             _buffer.AppendLine(s);
         }
@@ -79,6 +82,9 @@ public static class Cli
             Log.Debug("CLI output:\n" + _buffer);
         }
     }
+
+    private static readonly string[] Commands = { "scan", "analyze", "plan", "install", "uninstall", "verify", "selftest", "components", "check-update", "update", "version", "help" };
+    private static readonly string[] Flags = { "json", "offline", "ignore-gpu", "watermark", "show-window" };
 
     public static int Run(string[] args)
     {
@@ -97,8 +103,9 @@ public static class Cli
                 values[name] = args[++i];
                 continue;
             }
-            if (name is "scan" or "analyze" or "plan" or "install" or "uninstall" or "verify" or "selftest" or "components" or "check-update" or "update" or "version" or "help")
+            if (Commands.Contains(name))
             {
+                if (command != null && command != name) return Fail(null, $"Only one command at a time (--{command} and --{name}).", 3);
                 command = name;
                 if (name is "analyze" or "plan" or "install" or "uninstall" or "verify")
                 {
@@ -106,11 +113,16 @@ public static class Cli
                 }
                 continue;
             }
+            if (name is "h" or "?") { command = "help"; continue; }
+            if (!Flags.Contains(name)) return Fail(null, $"Unknown option: {a}\n\n" + Usage, 3);
             opts.Add(name);
         }
         if (command == null) return Fail(null, "No command given.\n\n" + Usage, 3);
 
-        using var o = new Output(values.GetValueOrDefault("out"));
+        Output o;
+        try { o = new Output(values.GetValueOrDefault("out")); }
+        catch (Exception ex) { return Fail(null, "Cannot write --out file: " + ex.Message, 3); }
+        using var _ = o;
         var json = opts.Contains("json");
         try
         {
@@ -126,6 +138,7 @@ public static class Cli
             }
             if (target == null) return Fail(o, "This command needs the path to the game's executable.", 3);
             if (!File.Exists(target)) return Fail(o, "File not found: " + target, 3);
+            target = Path.GetFullPath(target);
             GraphicsApi? apiOverride = null;
             if (values.TryGetValue("api", out var apiText))
             {
@@ -142,10 +155,17 @@ public static class Cli
                 _ => Fail(o, Usage, 3),
             };
         }
+        catch (OperationCanceledException)
+        {
+            return Fail(o, "Cancelled.", 1);
+        }
         catch (Exception ex)
         {
             Log.Error("CLI command failed", ex);
-            return Fail(o, ex.Message, 1);
+            var msg = ex.Message;
+            if (ex.InnerException != null && ex.InnerException.Message != ex.Message) msg += " (" + ex.InnerException.Message + ")";
+            if (Log.FilePath != null) msg += "\nSee " + Log.FilePath;
+            return Fail(o, msg, 1);
         }
     }
 
@@ -163,20 +183,38 @@ public static class Cli
     private static int Scan(Output o, bool json)
     {
         var games = GameScanner.ScanAll(s => Log.Info(s));
-        foreach (var g in games) GameScanner.ResolveExecutable(g);
+        foreach (var g in games)
+        {
+            GameScanner.ResolveExecutable(g);
+            g.Installed = IsInstalled(g);
+        }
         if (json)
         {
-            o.Line(JsonSerializer.Serialize(games.Select(g => new { g.Name, g.Launcher, g.InstallDir, g.ExePath, g.AppId, installed = InstallJournal.TryLoad(Path.GetDirectoryName(g.ExePath ?? g.InstallDir)!) != null, candidates = g.Candidates.Take(5).Select(c => new { c.Path, c.Score, c.Reason }) }), new JsonSerializerOptions { WriteIndented = true }));
+            o.Line(JsonSerializer.Serialize(games.Select(g => new { g.Name, g.Launcher, g.InstallDir, g.ExePath, g.AppId, installed = g.Installed, candidates = g.Candidates.Take(5).Select(c => new { c.Path, c.Score, c.Reason }) }), new JsonSerializerOptions { WriteIndented = true }));
             return 0;
         }
         o.Line($"{games.Count} game(s) found:");
         foreach (var g in games)
         {
-            var installed = g.ExePath != null && InstallJournal.TryLoad(Path.GetDirectoryName(g.ExePath)!) != null;
+            var installed = g.Installed;
             o.Line($"  {(installed ? "[DLSS5]" : "       ")} {g.Name}  ({g.Launcher})");
             o.Line($"           {g.ExePath ?? g.InstallDir + "  (no executable found)"}");
         }
         return 0;
+    }
+
+    private static bool IsInstalled(GameInfo g)
+    {
+        try
+        {
+            var dir = g.ExePath != null ? Path.GetDirectoryName(g.ExePath) : null;
+            return !string.IsNullOrEmpty(dir) && InstallJournal.TryLoad(dir) != null;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not read the install journal for {g.Name}: {ex.Message}");
+            return false;
+        }
     }
 
     private static int Analyze(Output o, string exe, bool json)
@@ -244,8 +282,15 @@ public static class Cli
         }
 
         o.Line();
-        var progress = new Progress<string>(s => o.Line("  " + s));
         var installer = new Installer(store);
+        if (json)
+        {
+            var log = new List<string>();
+            var journalJson = installer.InstallAsync(plan, new Progress<string>(log.Add)).GetAwaiter().GetResult();
+            o.Line(JsonSerializer.Serialize(new { ok = true, route = plan.Route.ToString(), gpu = gpu.ToString(), api = profile.EffectiveApi.ToString(), files = journalJson.Entries.Count, journal = Path.Combine(profile.GameDir, AppPaths.JournalFileName), plan.PostInstallSteps, plan.Warnings, log }, new JsonSerializerOptions { WriteIndented = true }));
+            return 0;
+        }
+        var progress = new Progress<string>(s => o.Line("  " + s));
         var journal = installer.InstallAsync(plan, progress).GetAwaiter().GetResult();
         o.Line();
         o.Line($"Done: {journal.Entries.Count} file(s) written. Next, in the game:");
@@ -266,7 +311,9 @@ public static class Cli
 
     private static int Verify(Output o, string exe, bool json)
     {
-        var results = Verifier.Verify(exe, ComponentCatalog.LoadEmbedded());
+        GpuInfo? gpu = null;
+        try { gpu = GpuInfo.DetectBest(); } catch (Exception ex) { Log.Warn("GPU detection failed: " + ex.Message); }
+        var results = Verifier.Verify(exe, ComponentCatalog.LoadEmbedded(), gpu);
         if (json)
         {
             o.Line(JsonSerializer.Serialize(results.Select(r => new { status = r.Status.ToString(), r.Text, r.Detail }), new JsonSerializerOptions { WriteIndented = true }));

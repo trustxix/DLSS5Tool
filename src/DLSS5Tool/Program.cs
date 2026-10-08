@@ -25,6 +25,22 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) =>
+        {
+            Log.Error("Unhandled UI exception", e.Exception);
+            MessageBox.Show(e.Exception.Message + (Log.FilePath != null ? "\n\nDetails: " + Log.FilePath : string.Empty), "DLSS 5 Tool", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex) Log.Error("Unhandled exception", ex);
+            else Log.Error("Unhandled exception: " + e.ExceptionObject);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Log.Error("Unobserved task exception", e.Exception);
+            e.SetObserved();
+        };
         Application.Run(new MainForm());
         return 0;
     }

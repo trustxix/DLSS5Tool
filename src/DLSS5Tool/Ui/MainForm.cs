@@ -46,12 +46,21 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = $"DLSS 5 Tool {AppPaths.Version}";
+        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleDimensions = new SizeF(96f, 96f);
         Width = 1180;
         Height = 760;
         MinimumSize = new Size(900, 600);
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9.5f);
+        try { Icon = Icon.ExtractAssociatedIcon(AppPaths.ExePath); } catch { /* no icon resource */ }
         BuildLayout();
+        FormClosing += (_, e) =>
+        {
+            if (!_busy || e.CloseReason == CloseReason.WindowsShutDown) return;
+            var answer = MessageBox.Show(this, "An operation is still running. Closing now can leave the game folder half-written.\n\nClose anyway?", "DLSS 5 Tool", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+            e.Cancel = answer != DialogResult.Yes;
+        };
         _logSink = (level, msg) =>
         {
             if (level == LogLevel.Debug || IsDisposed || !IsHandleCreated) return;
@@ -151,6 +160,13 @@ public sealed class MainForm : Form
         _selfTest.AutoSize = true;
         _selfTest.Click += async (_, _) => await SelfTestAsync();
         actions.Controls.AddRange(new Control[] { _install, _uninstall, _verify, _openFolder, _selfTest });
+        var tips = new ToolTip { AutoPopDelay = 12000 };
+        tips.SetToolTip(_install, "Write every file listed below next to the executable. Existing files are backed up first.");
+        tips.SetToolTip(_uninstall, "Remove everything this tool wrote and restore the backed-up originals byte for byte.");
+        tips.SetToolTip(_verify, "Check that every installed file is still present with the expected hash.");
+        tips.SetToolTip(_selfTest, "Run the 64-bit helper hidden with 300 neural evaluates to validate driver, add-on and model on this PC.");
+        tips.SetToolTip(_api, "Leave on Auto-detect unless the game uses a different renderer than the one detected.");
+        tips.SetToolTip(_browse, "Pick the executable ReShade should attach to when the detected one is a launcher or stub.");
         right.Controls.Add(actions, 0, 3);
         right.SetColumnSpan(actions, 3);
 
@@ -201,9 +217,18 @@ public sealed class MainForm : Form
 
     private async Task OnLoadAsync()
     {
-        _gpu = await Task.Run(GpuInfo.DetectBest);
-        AppendLog("GPU: " + _gpu);
-        if (!_gpu.IsRtx) AppendLog("No NVIDIA RTX GPU detected. DLSS 5 needs one; installs are blocked on this PC.");
+        try
+        {
+            _gpu = await Task.Run(GpuInfo.DetectBest);
+            AppendLog("GPU: " + _gpu);
+            if (!_gpu.IsRtx) AppendLog("No NVIDIA RTX GPU detected. DLSS 5 needs one; installs are blocked on this PC.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("GPU detection failed", ex);
+            _gpu = new GpuInfo("unknown (detection failed)", GpuTier.Unsupported, null);
+            AppendLog("GPU detection failed: " + ex.Message);
+        }
         await ScanAsync();
         _ = CheckUpdateAsync();
     }
@@ -255,7 +280,7 @@ public sealed class MainForm : Form
 
     private async Task OnGameSelectedAsync()
     {
-        if (_games.SelectedItems.Count == 0) return;
+        if (_suppressEvents || _games.SelectedItems.Count == 0) return;
         _current = (GameInfo)_games.SelectedItems[0].Tag!;
         _suppressEvents = true;
         _exe.Items.Clear();
@@ -420,9 +445,15 @@ public sealed class MainForm : Form
             var exe = _profile.ExePath;
             var gpu = _gpu;
             var results = await Task.Run(() => Verifier.Verify(exe, _store.Catalog, gpu));
+            var fails = results.Count(r => r.Status == VerifyStatus.Fail);
             _plan.Text = string.Join(Environment.NewLine, results.Select(r => r.ToString())) + Environment.NewLine + Environment.NewLine +
-                         $"{results.Count(r => r.Status == VerifyStatus.Ok)} ok, {results.Count(r => r.Status == VerifyStatus.Warn)} warning(s), {results.Count(r => r.Status == VerifyStatus.Fail)} failure(s).";
-            _status.Text = "Verified.";
+                         $"{results.Count(r => r.Status == VerifyStatus.Ok)} ok, {results.Count(r => r.Status == VerifyStatus.Warn)} warning(s), {fails} failure(s).";
+            _status.Text = fails == 0 ? "Verified." : $"Verified with {fails} failure(s).";
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Verify failed", ex);
+            MessageBox.Show(this, ex.Message, "Verify failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -452,18 +483,36 @@ public sealed class MainForm : Form
         }
     }
 
+    /// <summary>Re-reads the game folder after an install/uninstall without resetting the chosen executable or API override.</summary>
     private async Task ReanalyzeAsync()
     {
         if (_profile == null) return;
         var exe = _profile.ExePath;
-        _profile = await Task.Run(() => GameAnalyzer.Analyze(exe));
+        try
+        {
+            _profile = await Task.Run(() => GameAnalyzer.Analyze(exe));
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Re-analysis failed", ex);
+            AppendLog("Could not re-read the game folder: " + ex.Message);
+            return;
+        }
         if (_current != null)
         {
             _current.Installed = _profile.IsInstalled;
-            FillGames();
-            foreach (ListViewItem it in _games.Items)
+            _suppressEvents = true;
+            try
             {
-                if (ReferenceEquals(it.Tag, _current)) { it.Selected = true; break; }
+                FillGames();
+                foreach (ListViewItem it in _games.Items)
+                {
+                    if (ReferenceEquals(it.Tag, _current)) { it.Selected = true; it.EnsureVisible(); break; }
+                }
+            }
+            finally
+            {
+                _suppressEvents = false;
             }
         }
         RebuildPlan();
@@ -473,14 +522,29 @@ public sealed class MainForm : Form
     {
         using var dlg = new OpenFileDialog { Title = "Select the game's executable", Filter = "Executables (*.exe)|*.exe" };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
-        var dir = Path.GetDirectoryName(dlg.FileName)!;
-        var g = new GameInfo { Name = Path.GetFileNameWithoutExtension(dlg.FileName), Launcher = "Manual", InstallDir = dir, ExePath = dlg.FileName };
-        g.Candidates = ExeLocator.FindCandidates(dir, dlg.FileName);
-        g.Installed = InstallJournal.TryLoad(dir) != null;
-        _all.Insert(0, g);
+        var dir = Path.GetDirectoryName(dlg.FileName);
+        if (string.IsNullOrEmpty(dir)) return;
+        var existing = _all.FirstOrDefault(x => x.ExePath != null && x.ExePath.Equals(dlg.FileName, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+        {
+            existing = new GameInfo { Name = Path.GetFileNameWithoutExtension(dlg.FileName), Launcher = "Manual", InstallDir = dir, ExePath = dlg.FileName };
+            try
+            {
+                existing.Candidates = ExeLocator.FindCandidates(dir, dlg.FileName);
+                existing.Installed = InstallJournal.TryLoad(dir) != null;
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Could not inspect " + dir + ": " + ex.Message);
+            }
+            _all.Insert(0, existing);
+        }
         _search.Text = string.Empty;
         FillGames();
-        if (_games.Items.Count > 0) _games.Items[0].Selected = true;
+        foreach (ListViewItem it in _games.Items)
+        {
+            if (ReferenceEquals(it.Tag, existing)) { it.Selected = true; it.EnsureVisible(); break; }
+        }
     }
 
     private void BrowseExe()
