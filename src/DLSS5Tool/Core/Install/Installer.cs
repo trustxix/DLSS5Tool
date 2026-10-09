@@ -125,28 +125,35 @@ public sealed class Installer
     {
         gameDir = Path.GetFullPath(gameDir);
         var gameRoot = gameDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var backupDir = Path.Combine(gameDir, journal.BackupDir);
+        var backupDir = Path.GetFullPath(Path.Combine(gameDir, string.IsNullOrWhiteSpace(journal.BackupDir) ? AppPaths.BackupDirName : journal.BackupDir));
+        var backupRoot = backupDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var problems = new List<string>();
+        // Backups are only ever read from the game's own backup folder, whatever a damaged journal says.
+        var backupsUsable = backupRoot.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase);
+        if (!backupsUsable) problems.Add($"backup folder '{journal.BackupDir}' is outside the game folder; originals were not restored");
         foreach (var e in Enumerable.Reverse(journal.Entries))
         {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(e.Path)) { problems.Add("journal entry without a path; skipped"); continue; }
-            var full = Path.GetFullPath(Path.Combine(gameDir, e.Path));
-            var insideGame = full.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase);
             try
             {
+                var full = Path.GetFullPath(Path.Combine(gameDir, e.Path));
+                var insideGame = full.StartsWith(gameRoot, StringComparison.OrdinalIgnoreCase);
                 switch (e.Action)
                 {
                     case "created":
-                        // Only ever delete inside the game folder, whatever a damaged journal says.
+                        // Only ever delete inside the game folder.
                         if (!insideGame) { problems.Add($"{e.Path} is outside the game folder; not deleted"); break; }
                         if (File.Exists(full)) { ClearReadOnly(full); File.Delete(full); }
                         break;
                     case "replaced":
                     case "merged":
-                        var backup = e.Backup != null ? Path.Combine(backupDir, e.Backup) : null;
+                        var backup = backupsUsable && !string.IsNullOrWhiteSpace(e.Backup) ? Path.GetFullPath(Path.Combine(backupDir, e.Backup)) : null;
+                        if (backup != null && !backup.StartsWith(backupRoot, StringComparison.OrdinalIgnoreCase)) { problems.Add($"{e.Path}: backup path escapes the backup folder; left as is"); break; }
                         if (backup != null && File.Exists(backup))
                         {
+                            // Outside the game folder (a ReShade preset path can point there) we only ever overwrite a file that still exists.
+                            if (!insideGame && !File.Exists(full)) { problems.Add($"{e.Path} is outside the game folder and no longer exists; not recreated"); break; }
                             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
                             if (File.Exists(full)) ClearReadOnly(full);
                             File.Copy(backup, full, true);
@@ -414,6 +421,8 @@ public sealed class Installer
                 File.Copy(target, backupPath, true);
             }
             var tmp = target + ".dlss5tool-tmp";
+            FileAttributes? originalAttributes = null;
+            if (existed) { try { originalAttributes = File.GetAttributes(target); } catch { /* reported by the move if it matters */ } }
             try
             {
                 write(tmp);
@@ -422,9 +431,10 @@ public sealed class Installer
             }
             catch
             {
-                // The original is untouched: drop the half-written temp file and the now pointless backup copy.
+                // The original is untouched: drop the half-written temp file, put its attributes back and remove the now pointless backup copy.
                 try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best effort */ }
-                try { if (backupPath != null && File.Exists(backupPath)) File.Delete(backupPath); } catch { /* best effort */ }
+                try { if (originalAttributes is { } a && File.Exists(target)) File.SetAttributes(target, a); } catch { /* best effort */ }
+                try { if (backupPath != null && File.Exists(backupPath)) { ClearReadOnly(backupPath); File.Delete(backupPath); } } catch { /* best effort */ }
                 throw;
             }
             _journal.Entries.Add(new JournalEntry

@@ -31,6 +31,7 @@ public sealed class MainForm : Form
     private readonly StatusStrip _statusStrip = new();
     private readonly ToolStripStatusLabel _status = new();
     private readonly ToolStripStatusLabel _updateLink = new();
+    private readonly ToolTip _tips = new() { AutoPopDelay = 12000 };
 
     private readonly ComponentStore _store = ComponentStore.Default();
     private List<GameInfo> _all = new();
@@ -68,7 +69,7 @@ public sealed class MainForm : Form
         };
         Log.AddSink(_logSink);
         Load += async (_, _) => await OnLoadAsync();
-        FormClosed += (_, _) => Log.RemoveSink(_logSink);
+        FormClosed += (_, _) => { Log.RemoveSink(_logSink); _tips.Dispose(); };
     }
 
     private void BuildLayout()
@@ -160,13 +161,12 @@ public sealed class MainForm : Form
         _selfTest.AutoSize = true;
         _selfTest.Click += async (_, _) => await SelfTestAsync();
         actions.Controls.AddRange(new Control[] { _install, _uninstall, _verify, _openFolder, _selfTest });
-        var tips = new ToolTip { AutoPopDelay = 12000 };
-        tips.SetToolTip(_install, "Write every file listed below next to the executable. Existing files are backed up first.");
-        tips.SetToolTip(_uninstall, "Remove everything this tool wrote and restore the backed-up originals byte for byte.");
-        tips.SetToolTip(_verify, "Check that every installed file is still present with the expected hash.");
-        tips.SetToolTip(_selfTest, "Run the 64-bit helper hidden with 300 neural evaluates to validate driver, add-on and model on this PC.");
-        tips.SetToolTip(_api, "Leave on Auto-detect unless the game uses a different renderer than the one detected.");
-        tips.SetToolTip(_browse, "Pick the executable ReShade should attach to when the detected one is a launcher or stub.");
+        _tips.SetToolTip(_install, "Write every file listed below next to the executable. Existing files are backed up first.");
+        _tips.SetToolTip(_uninstall, "Remove everything this tool wrote and restore the backed-up originals byte for byte.");
+        _tips.SetToolTip(_verify, "Check that every installed file is still present with the expected hash.");
+        _tips.SetToolTip(_selfTest, "Run the 64-bit helper hidden with 300 neural evaluates to validate driver, add-on and model on this PC.");
+        _tips.SetToolTip(_api, "Leave on Auto-detect unless the game uses a different renderer than the one detected.");
+        _tips.SetToolTip(_browse, "Pick the executable ReShade should attach to when the detected one is a launcher or stub.");
         right.Controls.Add(actions, 0, 3);
         right.SetColumnSpan(actions, 3);
 

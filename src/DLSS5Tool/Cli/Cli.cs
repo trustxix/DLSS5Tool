@@ -92,11 +92,12 @@ public static class Cli
         string? outFile = null;
         for (var i = 0; i + 1 < args.Length; i++)
         {
-            if (args[i].Equals("--out", StringComparison.OrdinalIgnoreCase)) outFile = args[i + 1];
+            if (args[i].Equals("--out", StringComparison.OrdinalIgnoreCase) && !args[i + 1].StartsWith("--")) outFile = args[i + 1];
         }
+        var json = args.Any(a => a.Equals("--json", StringComparison.OrdinalIgnoreCase));
         Output o;
         try { o = new Output(outFile); }
-        catch (Exception ex) { return Fail(null, "Cannot write --out file: " + ex.Message, 3); }
+        catch (Exception ex) { return Fail(null, "Cannot write --out file: " + ex.Message, 3, json); }
         using var _ = o;
 
         var opts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -110,13 +111,13 @@ public static class Cli
             var name = a[2..].ToLowerInvariant();
             if (name is "api" or "out")
             {
-                if (i + 1 >= args.Length) return Fail(o, $"--{name} needs a value.", 3);
+                if (i + 1 >= args.Length || args[i + 1].StartsWith("--")) return Fail(o, $"--{name} needs a value.", 3, json);
                 values[name] = args[++i];
                 continue;
             }
             if (Commands.Contains(name))
             {
-                if (command != null && command != name) return Fail(o, $"Only one command at a time (--{command} and --{name}).", 3);
+                if (command != null && command != name) return Fail(o, $"Only one command at a time (--{command} and --{name}).", 3, json);
                 command = name;
                 if (name is "analyze" or "plan" or "install" or "uninstall" or "verify")
                 {
@@ -125,12 +126,11 @@ public static class Cli
                 continue;
             }
             if (name is "h" or "?") { command = "help"; continue; }
-            if (!Flags.Contains(name)) return Fail(o, $"Unknown option: {a}\n\n" + Usage, 3);
+            if (!Flags.Contains(name)) return Fail(o, $"Unknown option: {a}\n\n" + Usage, 3, json);
             opts.Add(name);
         }
-        if (command == null) return Fail(o, "No command given.\n\n" + Usage, 3);
+        if (command == null) return Fail(o, "No command given.\n\n" + Usage, 3, json);
 
-        var json = opts.Contains("json");
         try
         {
             switch (command)
@@ -143,13 +143,13 @@ public static class Cli
                 case "update": return CheckUpdate(o, true);
                 case "selftest": return SelfTestCmd(o, !opts.Contains("show-window"), opts.Contains("offline"));
             }
-            if (target == null) return Fail(o, "This command needs the path to the game's executable.", 3);
-            if (!File.Exists(target)) return Fail(o, "File not found: " + target, 3);
+            if (target == null) return Fail(o, "This command needs the path to the game's executable.", 3, json);
+            if (!File.Exists(target)) return Fail(o, "File not found: " + target, 3, json);
             target = Path.GetFullPath(target);
             GraphicsApi? apiOverride = null;
             if (values.TryGetValue("api", out var apiText))
             {
-                if (!GraphicsApiInfo.TryParse(apiText, out var api)) return Fail(o, "Unknown API: " + apiText, 3);
+                if (!GraphicsApiInfo.TryParse(apiText, out var api)) return Fail(o, "Unknown API: " + apiText, 3, json);
                 apiOverride = api;
             }
             return command switch
@@ -164,7 +164,7 @@ public static class Cli
         }
         catch (OperationCanceledException)
         {
-            return Fail(o, "Cancelled.", 1);
+            return Fail(o, "Cancelled.", 1, json);
         }
         catch (Exception ex)
         {
@@ -172,19 +172,33 @@ public static class Cli
             var msg = ex.Message;
             if (ex.InnerException != null && ex.InnerException.Message != ex.Message) msg += " (" + ex.InnerException.Message + ")";
             if (Log.FilePath != null) msg += "\nSee " + Log.FilePath;
-            return Fail(o, msg, 1);
+            return Fail(o, msg, 1, json);
         }
     }
 
-    private static int Fail(Output? o, string message, int code)
+    /// <summary>Reports an error as text, or as one JSON object when --json was asked for, and returns the exit code.</summary>
+    private static int Fail(Output? o, string message, int code, bool json = false)
     {
-        if (o != null) o.Line("error: " + message);
+        var text = json
+            ? JsonSerializer.Serialize(new { ok = false, code, error = message }, new JsonSerializerOptions { WriteIndented = true })
+            : "error: " + message;
+        if (o != null) o.Line(text);
         else
         {
             using var tmp = new Output(null);
-            tmp.Line("error: " + message);
+            tmp.Line(text);
         }
         return code;
+    }
+
+    /// <summary>Progress sink that runs the handler synchronously under a lock. Progress&lt;T&gt; would post to the thread pool
+    /// when no synchronization context exists, racing with the output writer and with the caller reading the results.</summary>
+    private sealed class SyncProgress : IProgress<string>
+    {
+        private readonly Action<string> _handler;
+        private readonly object _gate = new();
+        public SyncProgress(Action<string> handler) { _handler = handler; }
+        public void Report(string value) { lock (_gate) _handler(value); }
     }
 
     private static int Scan(Output o, bool json)
@@ -268,7 +282,7 @@ public static class Cli
         if (json)
         {
             var log = new List<string>();
-            var journalJson = new Installer(store).InstallAsync(plan, new Progress<string>(log.Add)).GetAwaiter().GetResult();
+            var journalJson = new Installer(store).InstallAsync(plan, new SyncProgress(log.Add)).GetAwaiter().GetResult();
             o.Line(JsonSerializer.Serialize(new { ok = true, route = plan.Route.ToString(), gpu = gpu.ToString(), api = profile.EffectiveApi.ToString(), files = journalJson.Entries.Count, journal = Path.Combine(profile.GameDir, AppPaths.JournalFileName), postInstallSteps = plan.PostInstallSteps, warnings = plan.Warnings, log }, new JsonSerializerOptions { WriteIndented = true }));
             return 0;
         }
@@ -297,7 +311,7 @@ public static class Cli
 
         o.Line();
         var installer = new Installer(store);
-        var progress = new Progress<string>(s => o.Line("  " + s));
+        var progress = new SyncProgress(s => o.Line("  " + s));
         var journal = installer.InstallAsync(plan, progress).GetAwaiter().GetResult();
         o.Line();
         o.Line($"Done: {journal.Entries.Count} file(s) written. Next, in the game:");
@@ -312,7 +326,7 @@ public static class Cli
         var journal = InstallJournal.TryLoad(dir);
         if (journal == null) return Fail(o, "DLSS 5 Tool has not installed anything next to " + exe, 2);
         var installer = new Installer(ComponentStore.Default());
-        installer.UninstallAsync(dir, journal, new Progress<string>(s => o.Line("  " + s))).GetAwaiter().GetResult();
+        installer.UninstallAsync(dir, journal, new SyncProgress(s => o.Line("  " + s))).GetAwaiter().GetResult();
         return 0;
     }
 
@@ -340,7 +354,7 @@ public static class Cli
         store.AllowNetwork = !offline;
         var gpu = GpuInfo.DetectBest();
         o.Line("GPU: " + gpu);
-        var result = SelfTest.RunAsync(store, gpu, new Progress<string>(s => o.Line("  " + s)), hide).GetAwaiter().GetResult();
+        var result = SelfTest.RunAsync(store, gpu, new SyncProgress(s => o.Line("  " + s)), hide).GetAwaiter().GetResult();
         o.Line(result.Summary);
         foreach (var h in result.Highlights) o.Line("  " + h);
         o.Line("Log: " + result.LogPath);
@@ -369,7 +383,7 @@ public static class Cli
         }
         o.Line($"Update available: {info.Tag}  {info.HtmlUrl}");
         if (!apply) return 0;
-        var path = Updater.DownloadAsync(info, new Progress<string>(s => o.Line("  " + s))).GetAwaiter().GetResult();
+        var path = Updater.DownloadAsync(info, new SyncProgress(s => o.Line("  " + s))).GetAwaiter().GetResult();
         o.Line("Installing the update and exiting.");
         Updater.ApplyAndRestart(path, restartUi: false);
         return 0;
