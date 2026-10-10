@@ -23,6 +23,15 @@ public static class Planner
 
     public const string HostReShadeIni = "[GENERAL]\r\nEffectSearchPaths=.\\\r\nTextureSearchPaths=.\\\r\n";
 
+    /// <summary>True when a ReShade proxy with this file name hooks the API the plan targets (OpenGL needs opengl32.dll; everything
+    /// else, including the dgVoodoo2 wrapper routes, presents through DXGI).</summary>
+    internal static bool ProxyFits(string reshadeFileName, GraphicsApi planned)
+    {
+        var hooks = GraphicsApiInfo.FromModuleName(reshadeFileName);
+        if (hooks == GraphicsApi.Unknown) return false;
+        return planned == GraphicsApi.OpenGL ? hooks == GraphicsApi.OpenGL : hooks.IsDxgi();
+    }
+
     private static readonly string[] LumeniteShaders =
     {
         "Shaders/lumenite_Kernel.fx", "Shaders/lumenite_QuantMotion.fx", "Shaders/lumenite_AnamorphicBloom.fx", "Shaders/lumenite_LSAO.fx",
@@ -81,10 +90,13 @@ public static class Planner
                     reason = "ReShade is already installed here as d3d9.dll, but dgVoodoo2 needs that file name. Uninstall that ReShade (or rename it to dxgi.dll) and try again.";
                     route = Route.Unsupported;
                 }
-                else
+                else if (ProxyFits(p.ReShade.FileName, api))
                 {
+                    // Same API, different proxy name (d3d11.dll instead of dxgi.dll): reuse what is there.
                     reshadeName = p.ReShade.FileName;
                 }
+                // Otherwise the existing ReShade hooks the wrong API (opengl32.dll on a Direct3D 11 game); it is disabled below
+                // and the proper proxy is written, because a ReShade that loads first blocks the one that would do the work.
             }
             var target = Path.Combine(p.GameDir, reshadeName);
             if (route != Route.Unsupported && p.IsForeignFile(target) && (p.ReShade == null || !p.ReShade.Path.Equals(target, StringComparison.OrdinalIgnoreCase)))
@@ -136,14 +148,24 @@ public static class Planner
         else
         {
             var target = Path.Combine(g, reshadeName);
-            var keep = p.ReShade != null && p.ReShade.Path.Equals(target, StringComparison.OrdinalIgnoreCase) && p.ReShade.IsUsable;
+            var existingHere = p.ReShade != null && p.ReShade.Path.Equals(target, StringComparison.OrdinalIgnoreCase);
+            var keep = existingHere && p.ReShade!.IsUsable;
             if (keep)
             {
                 plan.Notes.Add($"ReShade {p.ReShade!.Version} with add-on support is already installed as {reshadeName}; kept.");
             }
             else
             {
-                if (p.ReShade != null) plan.Notes.Add($"Existing ReShade {p.ReShade.Version} ({(p.ReShade.HasAddonSupport == false ? "no add-on support" : "too old")}) is replaced; the original is backed up.");
+                if (existingHere)
+                {
+                    plan.Notes.Add($"Existing ReShade {p.ReShade!.Version} ({(p.ReShade.HasAddonSupport == false ? "no add-on support" : "too old")}) is replaced; the original is backed up.");
+                }
+                else if (p.ReShade != null)
+                {
+                    var hooks = GraphicsApiInfo.FromModuleName(p.ReShade.FileName);
+                    plan.Warnings.Add($"{p.ReShade.FileName} is a ReShade for {(hooks == GraphicsApi.Unknown ? "another API" : hooks.Display())}, but this game renders with {api.Display()}. It is disabled (renamed) so it cannot load ahead of {reshadeName}, and restored on uninstall.");
+                    items.Add(new PlanItem { Kind = PlanItemKind.DisableFile, Target = p.ReShade.Path, Description = $"Disable {p.ReShade.FileName} (ReShade for the wrong API)" });
+                }
                 items.Add(Component("reshade", p.Is64Bit ? "ReShade64.dll" : "ReShade32.dll", target, $"ReShade 6.8 ({(p.Is64Bit ? "64" : "32")}-bit) as {reshadeName}"));
             }
         }

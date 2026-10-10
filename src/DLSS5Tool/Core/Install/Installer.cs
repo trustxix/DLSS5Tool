@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using DLSS5Tool.Core.Components;
 using DLSS5Tool.Core.Planning;
@@ -22,6 +23,8 @@ public sealed class Installer
         if (!plan.IsSupported) throw new InvalidOperationException(plan.UnsupportedReason ?? "This game is not supported.");
         var p = plan.Profile;
         var g = p.GameDir;
+        var running = RunningProcessFor(p.ExePath);
+        if (running != null) throw new InvalidOperationException($"{running} is running. Close the game first, then install again.");
 
         if (p.Journal != null)
         {
@@ -123,6 +126,8 @@ public sealed class Installer
 
     public Task UninstallAsync(string gameDir, InstallJournal journal, IProgress<string>? progress = null, CancellationToken ct = default)
     {
+        var running = RunningProcessFor(journal.ExePath);
+        if (running != null) throw new InvalidOperationException($"{running} is running. Close the game first, then uninstall again.");
         gameDir = Path.GetFullPath(gameDir);
         var gameRoot = gameDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var backupDir = Path.GetFullPath(Path.Combine(gameDir, string.IsNullOrWhiteSpace(journal.BackupDir) ? AppPaths.BackupDirName : journal.BackupDir));
@@ -214,6 +219,27 @@ public sealed class Installer
         foreach (var pr in problems) Log.Warn("Uninstall: " + pr);
         Report(progress, problems.Count == 0 ? "Uninstalled; the game folder is back to its previous state." : $"Uninstalled with {problems.Count} note(s): {string.Join("; ", problems)}");
         return Task.CompletedTask;
+    }
+
+    /// <summary>Name and PID of a running instance of the game, or null. Files of a running game are locked, so installing into it is pointless.</summary>
+    internal static string? RunningProcessFor(string? exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath)) return null;
+        var name = Path.GetFileNameWithoutExtension(exePath);
+        Process[] candidates;
+        try { candidates = Process.GetProcessesByName(name); } catch { return null; }
+        string? found = null;
+        foreach (var proc in candidates)
+        {
+            using (proc)
+            {
+                if (found != null) continue;
+                string? path = null;
+                try { path = proc.MainModule?.FileName; } catch { /* access denied: trust the name match */ }
+                if (path == null || path.Equals(exePath, StringComparison.OrdinalIgnoreCase)) found = $"{proc.ProcessName}.exe (PID {proc.Id})";
+            }
+        }
+        return found;
     }
 
     /// <summary>Games and launchers sometimes mark files read-only; a replace or delete must not trip over that.</summary>
