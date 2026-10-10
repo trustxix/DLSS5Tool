@@ -1,6 +1,15 @@
 CHANGELOG
 =========
 
+0.1.2 - 2026-10-10
+------------------
+
+* Detection: Unity games are planned as Direct3D 11. The Unity player
+  imports opengl32.dll for its optional GL Core backend and loads Direct3D at
+  run time, so the previous build installed ReShade as opengl32.dll, which
+  the game never renders through (no overlay, no DLSS 5). Reinstall affected
+  games once: the tool replaces the old files automatically.
+
 0.1.1 - 2026-10-10
 ------------------
 

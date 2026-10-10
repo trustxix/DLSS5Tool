@@ -49,13 +49,24 @@ public static class GameAnalyzer
             }
         }
 
+        // Unity: the player links opengl32.dll statically for its optional GL Core backend but loads Direct3D and
+        // Vulkan at run time, so the import table alone says "OpenGL" for a game that renders with Direct3D 11.
+        var unityPlayer = Path.Combine(dir, "UnityPlayer.dll");
+        var isUnity = File.Exists(unityPlayer) && pe.Is64Bit == (PeFile.TryRead(unityPlayer)?.Is64Bit ?? pe.Is64Bit);
+        if (isUnity)
+        {
+            if (apis.Add(GraphicsApi.D3D11) || apis.Contains(GraphicsApi.OpenGL))
+            {
+                evidence.Add("Unity player: Direct3D 11 is Unity's default renderer on Windows; the opengl32.dll import is the optional GL Core backend");
+            }
+        }
+
         if (apis.Count == 0)
         {
             var hints = PeFile.ScanApiStrings(exePath);
-            var unity = Path.Combine(dir, "UnityPlayer.dll");
-            if (File.Exists(unity))
+            if (File.Exists(unityPlayer))
             {
-                foreach (var kv in PeFile.ScanApiStrings(unity)) hints[kv.Key] = hints.GetValueOrDefault(kv.Key) + kv.Value;
+                foreach (var kv in PeFile.ScanApiStrings(unityPlayer)) hints[kv.Key] = hints.GetValueOrDefault(kv.Key) + kv.Value;
             }
             foreach (var kv in hints.OrderByDescending(k => k.Value))
             {
@@ -83,7 +94,8 @@ public static class GameAnalyzer
         var remix = File.Exists(Path.Combine(dir, ".trex", "NvRemixBridge.exe"));
         if (remix) evidence.Add("RTX Remix runtime present (.trex)");
 
-        var primary = dxvk ? GraphicsApi.Vulkan : GraphicsApiInfo.PickPrimary(apis);
+        // Unity defaults to Direct3D 11 on Windows (Direct3D 12 and Vulkan are opt-in and rare); the user can still override the API.
+        var primary = dxvk ? GraphicsApi.Vulkan : isUnity && apis.Contains(GraphicsApi.D3D11) ? GraphicsApi.D3D11 : GraphicsApiInfo.PickPrimary(apis);
 
         var dlssFiles = new List<string>();
         var nativeDlss = false;
