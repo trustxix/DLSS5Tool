@@ -1,8 +1,8 @@
 CHANGELOG
 =========
 
-Unreleased
-----------
+0.1.1 - 2026-10-10
+------------------
 
 * Command line: unknown options and conflicting commands are rejected with
   a usage error; --out creates its folder and also captures usage errors;
